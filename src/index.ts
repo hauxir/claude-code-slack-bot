@@ -29,7 +29,7 @@ async function start() {
     // Initialize MCP manager
     const mcpManager = new McpManager();
     const mcpConfig = mcpManager.loadConfiguration();
-    
+
     // Initialize handlers
     const claudeHandler = new ClaudeHandler(mcpManager);
     const slackHandler = new SlackHandler(app, claudeHandler, mcpManager);
