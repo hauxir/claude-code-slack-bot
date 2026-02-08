@@ -16,13 +16,20 @@ RUN npm run build && chown -R claude:claude /app
 
 USER claude
 
-# docker compose volumes:
+# docker compose example:
+#
+#   environment:
+#     - SLACK_BOT_TOKEN=xoxb-...
+#     - SLACK_APP_TOKEN=xapp-...
+#     - SLACK_SIGNING_SECRET=...
+#     - ANTHROPIC_API_KEY=...              # or omit if using Claude subscription
+#     - BASE_DIRECTORY=/code/
+#   # or use env_file:
+#   #   env_file: .env
 #
 #   volumes:
-#     - ~/.claude:/home/claude/.claude             # Claude credentials (from `claude login`)
-#     - ./.env:/app/.env                           # Environment variables
+#     - ~/.claude:/home/claude/.claude             # Claude credentials (from `claude login`, needed for subscription)
 #     - ./mcp-servers.json:/app/mcp-servers.json   # MCP server config (optional)
 #     - /path/to/code:/code                        # Code directories Claude will work on
-#                                                  # (set BASE_DIRECTORY=/code/ or DEFAULT_WORKING_DIRECTORY=/code/myproject)
 
 CMD ["node", "dist/index.js"]
