@@ -73,10 +73,11 @@ export class ClaudeHandler {
 
     this.logger.debug('Claude query options', options);
 
+    options.abortController = abortController || new AbortController();
+
     try {
       for await (const message of query({
         prompt,
-        abortController: abortController || new AbortController(),
         options,
       })) {
         if (message.type === 'system' && message.subtype === 'init') {
