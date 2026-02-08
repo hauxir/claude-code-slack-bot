@@ -3,9 +3,7 @@ export interface ConversationSession {
   channelId: string;
   threadTs?: string;
   sessionId?: string;
-  isActive: boolean;
   lastActivity: Date;
-  workingDirectory?: string;
 }
 
 export interface WorkingDirectoryConfig {

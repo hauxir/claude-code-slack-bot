@@ -1,13 +1,13 @@
 import { App } from '@slack/bolt';
-import { ClaudeHandler } from './claude-handler';
-import { SDKMessage } from '@anthropic-ai/claude-code';
-import { Logger } from './logger';
-import { WorkingDirectoryManager } from './working-directory-manager';
-import { FileHandler, ProcessedFile } from './file-handler';
-import { TodoManager, Todo } from './todo-manager';
-import { McpManager } from './mcp-manager';
-import { permissionServer } from './permission-mcp-server';
-import { config } from './config';
+import { ClaudeHandler } from './claude-handler.js';
+import { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { Logger } from './logger.js';
+import { WorkingDirectoryManager } from './working-directory-manager.js';
+import { FileHandler, ProcessedFile } from './file-handler.js';
+import { TodoManager, Todo } from './todo-manager.js';
+import { McpManager } from './mcp-manager.js';
+import { permissionServer } from './permission-mcp-server.js';
+import { config } from './config.js';
 
 interface MessageEvent {
   user: string;
@@ -208,6 +208,7 @@ export class SlackHandler {
       this.logger.debug('Creating new session', { sessionKey });
       session = this.claudeHandler.createSession(user, channel, thread_ts || ts);
     } else {
+      session.lastActivity = new Date();
       this.logger.debug('Using existing session', { sessionKey, sessionId: session.sessionId });
     }
 
@@ -287,7 +288,7 @@ export class SlackHandler {
               currentMessages.push(content);
               
               // Send each new piece of content as a separate message
-              const formatted = this.formatMessage(content, false);
+              const formatted = this.truncateForSlack(this.formatMessage(content, false));
               await say({
                 text: formatted,
                 thread_ts: thread_ts || ts,
@@ -305,7 +306,7 @@ export class SlackHandler {
           if (message.subtype === 'success' && (message as any).result) {
             const finalResult = (message as any).result;
             if (finalResult && !currentMessages.includes(finalResult)) {
-              const formatted = this.formatMessage(finalResult, true);
+              const formatted = this.truncateForSlack(this.formatMessage(finalResult, true));
               await say({
                 text: formatted,
                 thread_ts: thread_ts || ts,
@@ -378,15 +379,16 @@ export class SlackHandler {
       }
     } finally {
       this.activeControllers.delete(sessionKey);
-      
-      // Clean up todo tracking if session ended
+
+      // Always clean up message tracking maps immediately
+      this.originalMessages.delete(sessionKey);
+      this.currentReactions.delete(sessionKey);
+
+      // Keep todos visible for a while before cleanup
       if (session?.sessionId) {
-        // Don't immediately clean up - keep todos visible for a while
         setTimeout(() => {
           this.todoManager.cleanupSession(session.sessionId!);
           this.todoMessages.delete(sessionKey);
-          this.originalMessages.delete(sessionKey);
-          this.currentReactions.delete(sessionKey);
         }, 5 * 60 * 1000); // 5 minutes
       }
     }
@@ -477,6 +479,12 @@ export class SlackHandler {
     if (!str) return '';
     if (str.length <= maxLength) return str;
     return str.substring(0, maxLength) + '...';
+  }
+
+  private truncateForSlack(text: string): string {
+    const MAX_LENGTH = 3900;
+    if (text.length <= MAX_LENGTH) return text;
+    return text.substring(0, MAX_LENGTH) + '\n...(truncated)';
   }
 
   private handleTodoWrite(input: any): string {

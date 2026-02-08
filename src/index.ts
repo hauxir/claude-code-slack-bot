@@ -1,11 +1,13 @@
 import { App } from '@slack/bolt';
-import { config, validateConfig } from './config';
-import { ClaudeHandler } from './claude-handler';
-import { SlackHandler } from './slack-handler';
-import { McpManager } from './mcp-manager';
-import { Logger } from './logger';
+import { config, validateConfig } from './config.js';
+import { ClaudeHandler } from './claude-handler.js';
+import { SlackHandler } from './slack-handler.js';
+import { McpManager } from './mcp-manager.js';
+import { Logger } from './logger.js';
 
 const logger = new Logger('Main');
+
+let app: App;
 
 async function start() {
   try {
@@ -19,7 +21,7 @@ async function start() {
     });
 
     // Initialize Slack app
-    const app = new App({
+    app = new App({
       token: config.slack.botToken,
       signingSecret: config.slack.signingSecret,
       socketMode: true,
@@ -54,5 +56,19 @@ async function start() {
     process.exit(1);
   }
 }
+
+async function shutdown(signal: string) {
+  logger.info(`Received ${signal}, shutting down...`);
+  try {
+    await app?.stop();
+    logger.info('Bot stopped gracefully');
+  } catch (error) {
+    logger.error('Error during shutdown', error);
+  }
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 start();

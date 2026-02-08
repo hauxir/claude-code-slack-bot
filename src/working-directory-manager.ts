@@ -1,6 +1,6 @@
-import { WorkingDirectoryConfig } from './types';
-import { Logger } from './logger';
-import { config } from './config';
+import { WorkingDirectoryConfig } from './types.js';
+import { Logger } from './logger.js';
+import { config } from './config.js';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -199,15 +199,15 @@ export class WorkingDirectoryManager {
   formatChannelSetupMessage(channelId: string, channelName: string): string {
     const hasBaseDir = !!config.baseDirectory;
     
-    let message = `🏠 **Channel Working Directory Setup**\n\n`;
+    let message = `🏠 *Channel Working Directory Setup*\n\n`;
     message += `Please set the default working directory for #${channelName}:\n\n`;
-    
+
     if (hasBaseDir) {
-      message += `**Options:**\n`;
+      message += `*Options:*\n`;
       message += `• \`cwd project-name\` (relative to: \`${config.baseDirectory}\`)\n`;
       message += `• \`cwd /absolute/path/to/project\` (absolute path)\n\n`;
     } else {
-      message += `**Usage:**\n`;
+      message += `*Usage:*\n`;
       message += `• \`cwd /path/to/project\`\n`;
       message += `• \`set directory /path/to/project\`\n\n`;
     }

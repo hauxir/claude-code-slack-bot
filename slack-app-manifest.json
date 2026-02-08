@@ -28,7 +28,8 @@
         "im:write",
         "users:read",
         "reactions:read",
-        "reactions:write"
+        "reactions:write",
+        "files:read"
       ]
     }
   },
@@ -41,7 +42,7 @@
       ]
     },
     "interactivity": {
-      "is_enabled": false
+      "is_enabled": true
     },
     "org_deploy_enabled": false,
     "socket_mode_enabled": true,

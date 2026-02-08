@@ -1,8 +1,4 @@
-FROM node:20-slim
-
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
-
-RUN useradd -m -s /bin/bash claude
+FROM node:22-slim AS build
 
 WORKDIR /app
 
@@ -12,9 +8,27 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src/ ./src/
 
-RUN npm run build && chown -R claude:claude /app
+RUN npm run build
+
+FROM node:22-slim
+
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -s /bin/bash claude
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+COPY --from=build /app/dist ./dist
+
+RUN chown -R claude:claude /app
 
 USER claude
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "process.exit(0)"
 
 # docker compose example:
 #

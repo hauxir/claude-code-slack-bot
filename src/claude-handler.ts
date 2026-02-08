@@ -1,7 +1,7 @@
-import { query, type SDKMessage } from '@anthropic-ai/claude-code';
-import { ConversationSession } from './types';
-import { Logger } from './logger';
-import { McpManager } from './mcp-manager';
+import { query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { ConversationSession } from './types.js';
+import { Logger } from './logger.js';
+import { McpManager } from './mcp-manager.js';
 
 export class ClaudeHandler {
   private sessions: Map<string, ConversationSession> = new Map();
@@ -25,7 +25,6 @@ export class ClaudeHandler {
       userId,
       channelId,
       threadTs,
-      isActive: true,
       lastActivity: new Date(),
     };
     this.sessions.set(this.getSessionKey(userId, channelId, threadTs), session);
@@ -39,8 +38,8 @@ export class ClaudeHandler {
     workingDirectory?: string,
   ): AsyncGenerator<SDKMessage, void, unknown> {
     const options: any = {
-      outputFormat: 'stream-json',
       permissionMode: 'bypassPermissions',
+      allowDangerouslySkipPermissions: true,
     };
 
     if (workingDirectory) {
