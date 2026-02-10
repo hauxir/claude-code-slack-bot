@@ -40,6 +40,7 @@ export class ClaudeHandler {
     const options: any = {
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
+      settingSources: ['project', 'user'],
     };
 
     if (workingDirectory) {
