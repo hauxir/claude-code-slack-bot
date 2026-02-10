@@ -312,6 +312,13 @@ export class SlackHandler {
                 thread_ts: thread_ts || ts,
               });
             }
+          } else if (message.subtype === 'error_during_execution') {
+            const errorMessage = (message as any).error || 'Claude Code encountered an error during execution';
+            this.logger.error('Claude Code execution error', { error: errorMessage });
+            await say({
+              text: `❌ ${errorMessage}`,
+              thread_ts: thread_ts || ts,
+            });
           }
         }
       }
