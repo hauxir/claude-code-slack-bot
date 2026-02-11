@@ -15,6 +15,24 @@ export interface ProcessedFile {
   tempPath?: string;
 }
 
+export type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+export interface ImageContentBlock {
+  type: 'image';
+  source: {
+    type: 'base64';
+    media_type: ImageMediaType;
+    data: string;
+  };
+}
+
+export interface TextContentBlock {
+  type: 'text';
+  text: string;
+}
+
+export type ContentBlock = ImageContentBlock | TextContentBlock;
+
 export class FileHandler {
   private logger = new Logger('FileHandler');
 
@@ -43,9 +61,20 @@ export class FileHandler {
     }
 
     try {
-      this.logger.debug('Downloading file', { name: file.name, mimetype: file.mimetype });
+      const downloadUrl = file.url_private_download || file.url_private;
+      this.logger.debug('Downloading file', {
+        name: file.name,
+        mimetype: file.mimetype,
+        url: downloadUrl ? downloadUrl.substring(0, 80) + '...' : 'MISSING',
+        hasDownloadUrl: !!file.url_private_download,
+        hasPrivateUrl: !!file.url_private,
+      });
 
-      const response = await fetch(file.url_private_download, {
+      if (!downloadUrl) {
+        throw new Error('No download URL available for file');
+      }
+
+      const response = await fetch(downloadUrl, {
         headers: {
           'Authorization': `Bearer ${config.slack.botToken}`,
         },
@@ -55,7 +84,28 @@ export class FileHandler {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
+      const contentType = response.headers.get('content-type') || '';
       const buffer = Buffer.from(await response.arrayBuffer());
+
+      this.logger.info('File downloaded', {
+        name: file.name,
+        responseContentType: contentType,
+        bufferSize: buffer.length,
+        firstBytes: buffer.subarray(0, 8).toString('hex'),
+      });
+
+      // Validate image files have correct magic bytes
+      if (this.isImageFile(file.mimetype) && !this.hasValidImageHeader(buffer)) {
+        this.logger.error('Downloaded file does not have valid image header', {
+          name: file.name,
+          expectedMimetype: file.mimetype,
+          responseContentType: contentType,
+          firstBytes: buffer.subarray(0, 16).toString('hex'),
+          firstChars: buffer.subarray(0, 100).toString('utf-8').substring(0, 100),
+        });
+        throw new Error(`Downloaded file is not a valid image (got content-type: ${contentType})`);
+      }
+
       const tempDir = os.tmpdir();
       const tempPath = path.join(tempDir, `slack-file-${Date.now()}-${file.name}`);
       
@@ -85,6 +135,22 @@ export class FileHandler {
     }
   }
 
+  private hasValidImageHeader(buffer: Buffer): boolean {
+    if (buffer.length < 4) return false;
+
+    // PNG: 89 50 4E 47
+    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) return true;
+    // JPEG: FF D8 FF
+    if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) return true;
+    // GIF: 47 49 46 38
+    if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) return true;
+    // WebP: 52 49 46 46 ... 57 45 42 50
+    if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+        buffer.length >= 12 && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) return true;
+
+    return false;
+  }
+
   private isImageFile(mimetype: string): boolean {
     return mimetype.startsWith('image/');
   }
@@ -103,44 +169,82 @@ export class FileHandler {
     return textTypes.some(type => mimetype.startsWith(type));
   }
 
-  async formatFilePrompt(files: ProcessedFile[], userText: string): Promise<string> {
-    let prompt = userText || 'Please analyze the uploaded files.';
-    
+  buildContentBlocks(files: ProcessedFile[], userText: string): ContentBlock[] {
+    const blocks: ContentBlock[] = [];
+    let textParts: string[] = [];
+
+    if (userText) {
+      textParts.push(userText);
+    }
+
     if (files.length > 0) {
-      prompt += '\n\nUploaded files:\n';
-      
       for (const file of files) {
         if (file.isImage) {
-          prompt += `\n## Image: ${file.name}\n`;
-          prompt += `File type: ${file.mimetype}\n`;
-          prompt += `Path: ${file.path}\n`;
-          prompt += `Note: This is an image file that has been uploaded. You can analyze it using the Read tool to examine the image content.\n`;
+          // Flush any accumulated text before the image block
+          if (textParts.length > 0) {
+            blocks.push({ type: 'text', text: textParts.join('\n\n') });
+            textParts = [];
+          }
+
+          // Read image as base64 and add as inline content block
+          try {
+            const imageBuffer = fs.readFileSync(file.path);
+            const base64Data = imageBuffer.toString('base64');
+            const mediaType = this.toImageMediaType(file.mimetype);
+
+            if (mediaType) {
+              blocks.push({
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: mediaType,
+                  data: base64Data,
+                },
+              });
+              textParts.push(`[Image: ${file.name}]`);
+            } else {
+              textParts.push(`[Unsupported image format: ${file.name} (${file.mimetype})]`);
+            }
+          } catch (error) {
+            this.logger.error('Failed to read image for inline embedding', { name: file.name, error });
+            textParts.push(`[Failed to read image: ${file.name}]`);
+          }
         } else if (file.isText) {
-          prompt += `\n## File: ${file.name}\n`;
-          prompt += `File type: ${file.mimetype}\n`;
-          
           try {
             const content = fs.readFileSync(file.path, 'utf-8');
             if (content.length > 10000) {
-              prompt += `Content (truncated to first 10000 characters):\n\`\`\`\n${content.substring(0, 10000)}...\n\`\`\`\n`;
+              textParts.push(`## File: ${file.name}\n\`\`\`\n${content.substring(0, 10000)}...\n\`\`\``);
             } else {
-              prompt += `Content:\n\`\`\`\n${content}\n\`\`\`\n`;
+              textParts.push(`## File: ${file.name}\n\`\`\`\n${content}\n\`\`\``);
             }
           } catch (error) {
-            prompt += `Error reading file content: ${error}\n`;
+            textParts.push(`[Error reading file: ${file.name}]`);
           }
         } else {
-          prompt += `\n## File: ${file.name}\n`;
-          prompt += `File type: ${file.mimetype}\n`;
-          prompt += `Size: ${file.size} bytes\n`;
-          prompt += `Note: This is a binary file. Content analysis may be limited.\n`;
+          textParts.push(`[Binary file: ${file.name} (${file.mimetype}, ${file.size} bytes)]`);
         }
       }
-      
-      prompt += '\nPlease analyze these files and provide insights or assistance based on their content.';
     }
 
-    return prompt;
+    if (!userText && files.length > 0) {
+      textParts.push('Please analyze these files and provide insights or assistance based on their content.');
+    }
+
+    // Flush remaining text
+    if (textParts.length > 0) {
+      blocks.push({ type: 'text', text: textParts.join('\n\n') });
+    }
+
+    return blocks;
+  }
+
+  hasImages(files: ProcessedFile[]): boolean {
+    return files.some(f => f.isImage);
+  }
+
+  private toImageMediaType(mimetype: string): ImageMediaType | null {
+    const supported: ImageMediaType[] = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    return supported.includes(mimetype as ImageMediaType) ? (mimetype as ImageMediaType) : null;
   }
 
   async cleanupTempFiles(files: ProcessedFile[]): Promise<void> {

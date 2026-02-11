@@ -1,5 +1,7 @@
-import { query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { randomUUID } from 'crypto';
 import { ConversationSession } from './types.js';
+import { ContentBlock } from './file-handler.js';
 import { Logger } from './logger.js';
 import { McpManager } from './mcp-manager.js';
 
@@ -32,7 +34,7 @@ export class ClaudeHandler {
   }
 
   async *streamQuery(
-    prompt: string,
+    prompt: string | ContentBlock[],
     session?: ConversationSession,
     abortController?: AbortController,
     workingDirectory?: string,
@@ -75,9 +77,31 @@ export class ClaudeHandler {
 
     options.abortController = abortController || new AbortController();
 
+    // Build the prompt: either a plain string or an async iterable with content blocks
+    let queryPrompt: string | AsyncIterable<SDKUserMessage>;
+
+    if (typeof prompt === 'string') {
+      queryPrompt = prompt;
+    } else {
+      // Structured content blocks (e.g. with inline images) - use AsyncIterable format
+      const sessionId = session?.sessionId || randomUUID();
+      const contentBlocks = prompt;
+      queryPrompt = (async function* () {
+        yield {
+          type: 'user' as const,
+          message: {
+            role: 'user' as const,
+            content: contentBlocks as any,
+          },
+          parent_tool_use_id: null,
+          session_id: sessionId,
+        };
+      })();
+    }
+
     try {
       for await (const message of query({
-        prompt,
+        prompt: queryPrompt,
         options,
       })) {
         if (message.type === 'system' && message.subtype === 'init') {

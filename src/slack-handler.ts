@@ -216,16 +216,20 @@ export class SlackHandler {
     let statusMessageTs: string | undefined;
 
     try {
-      // Prepare the prompt with file attachments
-      const finalPrompt = processedFiles.length > 0 
-        ? await this.fileHandler.formatFilePrompt(processedFiles, text || '')
+      // Prepare the prompt: use content blocks when there are images, plain string otherwise
+      const hasImages = this.fileHandler.hasImages(processedFiles);
+      const finalPrompt = processedFiles.length > 0
+        ? (hasImages
+          ? this.fileHandler.buildContentBlocks(processedFiles, text || '')
+          : this.fileHandler.buildContentBlocks(processedFiles, text || '').map(b => (b as any).text || '').join('\n\n'))
         : text || '';
 
-      this.logger.info('Sending query to Claude Code SDK', { 
-        prompt: finalPrompt.substring(0, 200) + (finalPrompt.length > 200 ? '...' : ''), 
+      this.logger.info('Sending query to Claude Code SDK', {
+        promptType: typeof finalPrompt === 'string' ? 'string' : 'content_blocks',
         sessionId: session.sessionId,
         workingDirectory,
         fileCount: processedFiles.length,
+        hasImages,
       });
 
       // Send initial status message
@@ -301,6 +305,8 @@ export class SlackHandler {
             hasResult: message.subtype === 'success' && !!(message as any).result,
             totalCost: (message as any).total_cost_usd,
             duration: (message as any).duration_ms,
+            errors: (message as any).errors,
+            stopReason: (message as any).stop_reason,
           });
           
           if (message.subtype === 'success' && (message as any).result) {
@@ -313,8 +319,9 @@ export class SlackHandler {
               });
             }
           } else if (message.subtype === 'error_during_execution') {
-            const errorMessage = (message as any).error || 'Claude Code encountered an error during execution';
-            this.logger.error('Claude Code execution error', { error: errorMessage });
+            const errors: string[] = (message as any).errors || [];
+            const errorMessage = errors.length > 0 ? errors.join('\n') : 'Claude Code encountered an error during execution';
+            this.logger.error('Claude Code execution error', { errors });
             await say({
               text: `❌ ${errorMessage}`,
               thread_ts: thread_ts || ts,
