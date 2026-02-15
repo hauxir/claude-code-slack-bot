@@ -1,9 +1,4 @@
-FROM ubuntu:24.04 AS build
-
-RUN apt-get update && apt-get install -y curl && \
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
+FROM ghcr.io/hauxir/brock_samson:latest AS build
 
 WORKDIR /app
 
@@ -15,14 +10,7 @@ COPY src/ ./src/
 
 RUN npm run build
 
-FROM ubuntu:24.04
-
-RUN apt-get update && apt-get install -y curl git && \
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN useradd -m -s /bin/bash claude
+FROM ghcr.io/hauxir/brock_samson:latest
 
 WORKDIR /app
 
@@ -31,9 +19,9 @@ RUN npm ci --omit=dev
 
 COPY --from=build /app/dist ./dist
 
-RUN chown -R claude:claude /app
+RUN chown -R brock:brock /app
 
-USER claude
+USER brock
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "process.exit(0)"
@@ -50,8 +38,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 #   #   env_file: .env
 #
 #   volumes:
-#     - ~/.claude:/home/claude/.claude             # Claude credentials (from `claude login`, needed for subscription)
+#     - ~/.claude:/home/brock/.claude             # Claude credentials (from `claude login`, needed for subscription)
 #     - ./mcp-servers.json:/app/mcp-servers.json   # MCP server config (optional)
 #     - /path/to/code:/code                        # Code directories Claude will work on
 
+ENTRYPOINT []
 CMD ["node", "dist/index.js"]
