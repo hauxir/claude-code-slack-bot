@@ -1,4 +1,4 @@
-FROM ghcr.io/hauxir/brock_samson:47e6e7
+FROM ghcr.io/hauxir/brock_samson:60b7a3
 
 WORKDIR /app
 
