@@ -1,23 +1,11 @@
-FROM ghcr.io/hauxir/brock_samson:latest AS build
+FROM ghcr.io/hauxir/brock_samson:d4dfec
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci
-
-COPY tsconfig.json ./
+COPY package.json package-lock.json tsconfig.json ./
 COPY src/ ./src/
 
-RUN npm run build
-
-FROM ghcr.io/hauxir/brock_samson:latest
-
-WORKDIR /app
-
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
-
-COPY --from=build /app/dist ./dist
+RUN npm ci && npm run build && rm -rf src/ tsconfig.json node_modules && npm ci --omit=dev
 
 RUN chown -R brock:brock /app
 
