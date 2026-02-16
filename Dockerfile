@@ -1,5 +1,6 @@
 FROM ghcr.io/hauxir/brock_samson:60b7a3
 
+USER root
 WORKDIR /app
 
 COPY package.json package-lock.json tsconfig.json ./
